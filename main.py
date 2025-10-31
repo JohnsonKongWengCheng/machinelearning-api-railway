@@ -13,7 +13,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 # =====================================
 # STEP 2: Load your cleaned dataset (smaller + compressed)
 # =====================================
-DATA_URL = "https://github.com/JohnsonKongWengCheng/machinelearning-api-railway/blob/main/cleaned_keywords_dataset.csv.gz"
+DATA_URL = "https://github.com/JohnsonKongWengCheng/machinelearning-api-railway/raw/refs/heads/main/cleaned_keywords_dataset.csv.gz"
 
 print("📦 Loading cleaned dataset...")
 df = pd.read_csv(DATA_URL, compression="gzip")
