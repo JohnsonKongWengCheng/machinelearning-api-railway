@@ -1,6 +1,7 @@
 # =====================================
 # STEP 1: Import required libraries
 # =====================================
+import ast
 import pandas as pd
 import joblib
 from fastapi import FastAPI
@@ -18,29 +19,42 @@ DATA_URL = "https://github.com/JohnsonKongWengCheng/machinelearning-api-railway/
 print("📦 Loading cleaned dataset...")
 df = pd.read_csv(DATA_URL, compression="gzip")
 
-# Keep only essential columns
-df = df[['keywords', 'injury', 'age', 'gender']].dropna(subset=['keywords', 'injury'])
+# --- Ensure required columns exist ---
+expected_cols = {"keywords", "injury"}
+if not expected_cols.issubset(df.columns):
+    raise ValueError(f"Dataset missing columns: {expected_cols - set(df.columns)}")
 
-# Convert list-like string of keywords back into text
-df['keywords'] = df['keywords'].apply(
-    lambda x: ' '.join(eval(x)) if isinstance(x, str) and x.startswith('[') else str(x)
-)
+# Keep only essential columns safely
+available_cols = [col for col in ["keywords", "injury", "age", "gender"] if col in df.columns]
+df = df[available_cols].dropna(subset=["keywords", "injury"])
 
-# Filter out invalid ages (1–100)
-df = df[(df['age'] >= 1) & (df['age'] <= 100)]
+# Convert list-like strings (e.g., "['fall','ladder']") into clean text
+def safe_eval_keywords(x):
+    try:
+        if isinstance(x, str) and x.startswith("["):
+            return " ".join(ast.literal_eval(x))
+        return str(x)
+    except Exception:
+        return str(x)
+
+df["keywords"] = df["keywords"].apply(safe_eval_keywords)
+
+# Filter out invalid ages (if column exists)
+if "age" in df.columns:
+    df = df[(df["age"].fillna(0) >= 1) & (df["age"].fillna(0) <= 100)]
 
 print(f"✅ Dataset loaded with {len(df)} valid rows")
 
 # =====================================
 # STEP 3: Train ML model (TF-IDF + Naive Bayes)
 # =====================================
-X = df['keywords']
-y = df['injury']
+X = df["keywords"]
+y = df["injury"]
 
 model = make_pipeline(TfidfVectorizer(), MultinomialNB())
 model.fit(X, y)
 
-# Save model for future use
+# Save model
 joblib.dump(model, "injury_predictor.pkl")
 print("✅ Model trained and saved successfully!")
 
@@ -51,13 +65,13 @@ app = FastAPI(title="Injury Prediction API (Railway)")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow access from your frontend or Android app
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load model (to ensure available even after Railway restart)
+# Load model (ensure available even after Railway restart)
 model = joblib.load("injury_predictor.pkl")
 
 # =====================================
@@ -67,7 +81,14 @@ class KeywordInput(BaseModel):
     keywords: list[str]
 
 # =====================================
-# STEP 6: Define prediction endpoint
+# STEP 6: Root endpoint for testing
+# =====================================
+@app.get("/")
+def root():
+    return {"message": "✅ Injury Prediction API is running on Railway!"}
+
+# =====================================
+# STEP 7: Prediction endpoint
 # =====================================
 @app.post("/predict")
 def predict_injury(data: KeywordInput):
@@ -80,15 +101,15 @@ def predict_injury(data: KeywordInput):
     """
     if not data.keywords:
         return {"error": "No keywords provided."}
-    
-    input_text = ' '.join(data.keywords)
+
+    input_text = " ".join(data.keywords)
     prediction = model.predict([input_text])[0]
     return {"keywords": data.keywords, "predicted_injury": prediction}
 
 # =====================================
-# STEP 7: Local testing entry point
+# STEP 8: Local testing entry point
 # =====================================
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting Injury Prediction API...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
