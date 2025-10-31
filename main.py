@@ -3,6 +3,7 @@
 # =====================================
 import os
 import joblib
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -50,11 +51,24 @@ def root():
 @app.post("/predict")
 def predict_injury(data: KeywordInput):
     if not data.keywords:
-        return {"error": "No keywords provided."}
+        return {"status": "error", "message": "No keywords provided."}
 
-    input_text = " ".join(data.keywords)
-    prediction = model.predict([input_text])[0]
-    return {"keywords": data.keywords, "predicted_injury": prediction}
+    try:
+        input_text = " ".join(data.keywords)
+        prediction = model.predict([input_text])[0]
+
+        # Convert NumPy types to native Python
+        predicted_value = int(prediction) if hasattr(prediction, "item") else prediction
+
+        return {
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat(),
+            "keywords": data.keywords,
+            "predicted_injury": predicted_value
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # =====================================
 # STEP 7: Local run
