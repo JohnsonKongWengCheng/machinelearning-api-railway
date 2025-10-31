@@ -1,132 +1,94 @@
 # =====================================
 # STEP 1: Import required libraries
 # =====================================
-import re
-import joblib
 import pandas as pd
+import joblib
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sklearn.pipeline import make_pipeline
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 # =====================================
-# STEP 2: Load your dataset
+# STEP 2: Load your cleaned dataset (smaller + compressed)
 # =====================================
-data = pd.read_csv("FYP-ML-dataset.csv")
-df = data.loc[:, ["Narrative_1", "Diagnosis"]].copy()
-df.columns = ["scenario_raw", "injury"]
+DATA_URL = "https://github.com/JohnsonKongWengCheng/machinelearning-api-railway/blob/main/cleaned_keywords_dataset.csv.gz"
 
-# =====================================
-# STEP 3: Extract injury text (after DX:)
-# =====================================
-df.loc[:, 'injury_name'] = (
-    df['scenario_raw']
-    .str.extract(r'DX:\s*([A-Z\s]+[A-Z])', expand=False)
-    .str.strip()
+print("📦 Loading cleaned dataset...")
+df = pd.read_csv(DATA_URL, compression="gzip")
+
+# Keep only essential columns
+df = df[['keywords', 'injury', 'age', 'sex']].dropna(subset=['keywords', 'injury'])
+
+# Convert list-like string of keywords back into text
+df['keywords'] = df['keywords'].apply(
+    lambda x: ' '.join(eval(x)) if isinstance(x, str) and x.startswith('[') else str(x)
 )
 
-# =====================================
-# STEP 4: Remove DX: part from scenario text
-# =====================================
-df.loc[:, 'scenario_clean'] = (
-    df['scenario_raw']
-    .str.replace(r'DX:.*', '', regex=True)
-    .str.replace(r'\s+', ' ', regex=True)
-    .str.strip()
-)
+# Filter out invalid ages (1–100)
+df = df[(df['age'] >= 1) & (df['age'] <= 100)]
+
+print(f"✅ Dataset loaded with {len(df)} valid rows")
 
 # =====================================
-# STEP 5: Extract structured info (age, gender)
-# =====================================
-def extract_age(text):
-    match = re.search(r'(\d{1,2})\s*Y[O]?[MF]?', text, re.IGNORECASE)
-    return int(match.group(1)) if match else None
-
-def extract_gender(text):
-    text = text.upper()
-    if re.search(r'\bYOM\b|\bMALE\b', text):
-        return 'Male'
-    elif re.search(r'\bYOF\b|\bFEMALE\b', text):
-        return 'Female'
-    return None
-
-df.loc[:, 'age'] = df['scenario_clean'].apply(extract_age)
-df.loc[:, 'gender'] = df['scenario_clean'].apply(extract_gender)
-df = df.assign(age=df['age'].astype('Int64'))
-
-# =====================================
-# STEP 6: Clean up scenario text (remove age/gender tags)
-# =====================================
-def clean_scenario(text):
-    text = re.sub(r'\b\d{1,2}\s*Y[O]?[MF]?\b', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\b(MALE|FEMALE)\b', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-df.loc[:, 'scenario_clean'] = df['scenario_clean'].apply(clean_scenario)
-
-# =====================================
-# STEP 7: Rename and reorder columns
-# =====================================
-df = df.rename(columns={'scenario_clean': 'scenario'})
-df = df[['scenario', 'injury_name', 'injury', 'age', 'gender']]
-
-# =====================================
-# STEP 8: Extract keywords for ML model
-# =====================================
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-
-def extract_keywords(text):
-    words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
-    words = [w for w in words if w not in ENGLISH_STOP_WORDS]
-    return ' '.join(words)
-
-df['keywords'] = df['scenario'].apply(extract_keywords)
-
-# =====================================
-# STEP 9: Train the ML model (TF-IDF + Naive Bayes)
+# STEP 3: Train ML model (TF-IDF + Naive Bayes)
 # =====================================
 X = df['keywords']
-y = df['injury_name'].fillna('Unknown')
+y = df['injury']
 
 model = make_pipeline(TfidfVectorizer(), MultinomialNB())
 model.fit(X, y)
 
-# =====================================
-# STEP 10: Save trained model
-# =====================================
+# Save model for future use
 joblib.dump(model, "injury_predictor.pkl")
+print("✅ Model trained and saved successfully!")
 
 # =====================================
-# STEP 11: Create FastAPI app
+# STEP 4: Initialize FastAPI app
 # =====================================
-app = FastAPI(title="Injury Prediction API")
+app = FastAPI(title="Injury Prediction API (Railway)")
 
-# Load model
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow access from your frontend or Android app
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load model (to ensure available even after Railway restart)
 model = joblib.load("injury_predictor.pkl")
 
+# =====================================
+# STEP 5: Define input schema
+# =====================================
 class KeywordInput(BaseModel):
     keywords: list[str]
 
+# =====================================
+# STEP 6: Define prediction endpoint
+# =====================================
 @app.post("/predict")
 def predict_injury(data: KeywordInput):
     """
-    Accepts list of keywords (from NLP API) and returns predicted injury
+    Accepts list of keywords (from NLP API) and returns predicted injury.
     Example input:
     {
-        "keywords": ["fall", "ladder", "no", "response"]
+        "keywords": ["fall", "ladder", "unconscious"]
     }
     """
+    if not data.keywords:
+        return {"error": "No keywords provided."}
+    
     input_text = ' '.join(data.keywords)
     prediction = model.predict([input_text])[0]
-    return {"prediction": prediction}
+    return {"keywords": data.keywords, "predicted_injury": prediction}
 
 # =====================================
-# STEP 12: Run the app (local testing)
+# STEP 7: Local testing entry point
 # =====================================
 if __name__ == "__main__":
     import uvicorn
-    print("✅ Dataset loaded and model trained successfully.")
-    print(df.head(10))
+    print("🚀 Starting Injury Prediction API...")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
