@@ -19,7 +19,7 @@ print("📦 Loading cleaned dataset...")
 df = pd.read_csv(DATA_URL, compression="gzip")
 
 # Keep only essential columns
-df = df[['keywords', 'injury', 'age', 'sex']].dropna(subset=['keywords', 'injury'])
+df = df[['keywords', 'injury', 'age', 'gender']].dropna(subset=['keywords', 'injury'])
 
 # Convert list-like string of keywords back into text
 df['keywords'] = df['keywords'].apply(
