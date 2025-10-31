@@ -1,6 +1,7 @@
 # =====================================
 # STEP 1: Import required libraries
 # =====================================
+import os
 import ast
 import pandas as pd
 import joblib
@@ -72,7 +73,13 @@ app.add_middleware(
 )
 
 # Load model (ensure available even after Railway restart)
-model = joblib.load("injury_predictor.pkl")
+if os.path.exists("injury_predictor.pkl"):
+    model = joblib.load("injury_predictor.pkl")
+else:
+    print("⚠️ Model not found — retraining...")
+    model = make_pipeline(TfidfVectorizer(), MultinomialNB())
+    model.fit(X, y)
+    joblib.dump(model, "injury_predictor.pkl")
 
 # =====================================
 # STEP 5: Define input schema
