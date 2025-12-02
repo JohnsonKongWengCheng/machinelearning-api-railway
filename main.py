@@ -27,10 +27,10 @@ app.add_middleware(
 MODEL_PATH = "injury_predictor.pkl"
 
 if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError("❌ injury_predictor.pkl not found. Please upload it to Railway.")
+    raise FileNotFoundError("injury_predictor.pkl not found. Please upload it to Railway.")
 
 model = joblib.load(MODEL_PATH)
-print("✅ Model loaded successfully!")
+print("Model loaded successfully!")
 
 # =====================================
 # STEP 4: Input schema
@@ -43,7 +43,7 @@ class KeywordInput(BaseModel):
 # =====================================
 @app.get("/")
 def root():
-    return {"message": "✅ Injury Prediction API is running on Railway!"}
+    return {"message": "Injury Prediction API is running on Railway!"}
 
 # =====================================
 # STEP 6: Prediction endpoint
@@ -75,5 +75,5 @@ def predict_injury(data: KeywordInput):
 # =====================================
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting API locally...")
+    print("Starting API locally...")
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
